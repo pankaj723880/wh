@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct Message Relay</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1f2937; /* Dark background */
+        }
+        .container-card {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body class="p-4 flex items-center justify-center min-h-screen">
+
+    <div id="app" class="container-card bg-gray-800 p-6 md:p-10 rounded-xl w-full max-w-lg text-white">
+        <h1 class="text-3xl font-bold mb-6 text-center text-indigo-400" id="main-title">Generate Share Link</h1>
+        
+        <p id="message-box" class="text-sm p-3 mb-4 rounded-lg text-center hidden"></p>
+
+        <!-- Link Generation View (Default) -->
+        <div id="link-generation-view">
+            <h2 class="text-xl font-semibold mb-3 text-gray-300">Your Number (The Sender)</h2>
+            <p class="text-sm text-gray-400 mb-4">Enter your WhatsApp number to receive the message.</p>
+
+            <input type="text" id="sender-whatsapp-input" placeholder="Your WhatsApp Number (e.g., 917408472817)" 
+                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-indigo-500 focus:border-indigo-500 text-sm mb-4">
+            
+            <button id="generate-link-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-bold transition duration-200">
+                Generate Shareable Link
+            </button>
+
+            <div id="share-output" class="hidden mt-6 p-4 bg-gray-700 rounded-lg space-y-3">
+                <p class="text-sm font-semibold text-green-400">Copy this link and send it via WhatsApp:</p>
+                <input type="text" id="shareable-link-output" readonly 
+                    class="w-full p-2 rounded-lg bg-gray-800 text-xs text-green-300 border border-gray-600 cursor-pointer" onclick="this.select(); document.execCommand('copy');">
+                <button id="copy-link-btn" class="w-full py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg font-semibold text-sm">
+                    Copy Link to Clipboard
+                </button>
+            </div>
+        </div>
+
+        <!-- Message Sending View (Displayed when link is opened) -->
+        <div id="message-sending-view" class="hidden">
+            <p class="text-lg font-semibold mb-4 text-green-400" id="sender-number-display">Sending reply to: N/A</p>
+
+            <!-- User Message Input Form -->
+            <div class="space-y-4 mb-6">
+                <textarea id="user-message" rows="4" placeholder="Type your reply here..." 
+                    class="w-full p-4 rounded-lg bg-gray-700 border border-gray-600 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"></textarea>
+                
+                <input type="text" id="subject-line" placeholder="Subject (Optional)" 
+                    class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+            </div>
+            
+            <!-- Final Submit Button -->
+            <button id="send-message-btn" class="w-full mt-6 py-4 bg-emerald-500 hover:bg-emerald-600 rounded-lg font-bold transition duration-200">
+                Send Reply (Text Only)
+            </button>
+        </div>
+        
+    </div>
+
+    <script>
+        // DOM elements
+        const mainTitle = document.getElementById('main-title');
+        const messageBox = document.getElementById('message-box');
+
+        // Link Generation View elements
+        const linkGenerationView = document.getElementById('link-generation-view');
+        const senderWhatsappInput = document.getElementById('sender-whatsapp-input');
+        const generateLinkBtn = document.getElementById('generate-link-btn');
+        const shareOutput = document.getElementById('share-output');
+        const shareableLinkOutput = document.getElementById('shareable-link-output');
+        const copyLinkBtn = document.getElementById('copy-link-btn');
+
+        // Message Sending View elements
+        const messageSendingView = document.getElementById('message-sending-view');
+        const senderNumberDisplay = document.getElementById('sender-number-display');
+        const userMessageInput = document.getElementById('user-message');
+        const subjectLineInput = document.getElementById('subject-line');
+        const sendMessageBtn = document.getElementById('send-message-btn');
+
+        // --- Utility Functions ---
+
+        function showMessage(text, isError = false) {
+            messageBox.textContent = text;
+            messageBox.className = 'text-sm p-3 mb-4 rounded-lg text-center block ' + (isError ? 'bg-red-900 text-red-300' : 'bg-green-900 text-green-300');
+            if (!isError) {
+                 setTimeout(() => {
+                    messageBox.classList.add('hidden');
+                }, 7000);
+            }
+        }
+
+        function getQueryParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        /**
+         * FIX: Robustly determines the base URL for the shareable link.
+         * This strips any existing query parameters from the current URL to ensure the link
+         * points exactly to the index.html file without conflicting query strings, 
+         * which should resolve 404 issues in certain hosting environments.
+         */
+        function getBaseUrl() {
+            // Create a URL object from the current location
+            const url = new URL(window.location.href);
+            // Clear any existing search parameters (which might be causing the 404)
+            url.search = ''; 
+            
+            // Return the clean URL string
+            return url.toString(); 
+        }
+
+        // --- View Initialization ---
+
+        function initializeView() {
+            const senderPhone = getQueryParam('sender_phone');
+            
+            if (senderPhone) {
+                // Mode 2: Receiver view (Message Sending)
+                linkGenerationView.classList.add('hidden');
+                messageSendingView.classList.remove('hidden');
+                mainTitle.textContent = "Send Reply";
+                senderNumberDisplay.textContent = `Sending reply to: ${senderPhone}`;
+            } else {
+                // Mode 1: Sender view (Link Generation)
+                linkGenerationView.classList.remove('hidden');
+                messageSendingView.classList.add('hidden');
+            }
+        }
+
+        // --- Mode 1: Link Generation Logic ---
+
+        generateLinkBtn.addEventListener('click', () => {
+            const number = senderWhatsappInput.value.trim().replace(/[^0-9]/g, ''); // Clean the number
+            
+            if (number.length < 10) {
+                showMessage('Please enter a valid WhatsApp number (10+ digits).', true);
+                return;
+            }
+
+            // Use the new, robust getBaseUrl function
+            const baseUrl = getBaseUrl(); 
+            const shareLink = `${baseUrl}?sender_phone=${number}`;
+            
+            shareableLinkOutput.value = shareLink;
+            shareOutput.classList.remove('hidden');
+            showMessage('Link generated! Copy it and send it to your contact on WhatsApp.', false);
+        });
+
+        copyLinkBtn.addEventListener('click', () => {
+             // document.execCommand('copy') is used for compatibility in iframes
+             shareableLinkOutput.select();
+             document.execCommand('copy');
+             copyLinkBtn.textContent = 'Copied!';
+             setTimeout(() => {
+                 copyLinkBtn.textContent = 'Copy Link to Clipboard';
+             }, 3000);
+        });
+
+
+        // --- Mode 2: Direct Sending Logic (Text Only) ---
+        
+        sendMessageBtn.addEventListener('click', () => {
+            const senderPhone = getQueryParam('sender_phone');
+            if (!senderPhone) {
+                showMessage('Error: Sender number not found in URL.', true);
+                return;
+            }
+
+            sendMessageBtn.disabled = true;
+            sendMessageBtn.textContent = 'Preparing Message...';
+
+            const userMessage = userMessageInput.value.trim() || "No reply message provided.";
+            const subject = subjectLineInput.value.trim() || "Quick Reply";
+
+            // Clear previous error messages
+            showMessage('');
+
+            try {
+                // Construct the message text (no location/photo data included)
+                const message = `
+*--- QUICK REPLY MESSAGE ---*
+*Subject:* ${subject}
+--------------------------------
+${userMessage}
+--------------------------------
+`;
+                const encodedMessage = encodeURIComponent(message);
+                
+                // Target the ORIGINAL SENDER (User A)
+                const whatsappUrl = `whatsapp://send?phone=${senderPhone}&text=${encodedMessage}`;
+
+                window.open(whatsappUrl, '_blank');
+                
+                showMessage('Message Sent! WhatsApp draft opened automatically. Please manually confirm and send the message.', false);
+                sendMessageBtn.textContent = 'Success! Check WhatsApp (Click to Re-send)';
+
+            } catch (error) {
+                showMessage(`Transmission failed: ${error.message}. Please try again.`, true);
+                sendMessageBtn.textContent = 'Error! Click to Retry Submission';
+                console.error('Submission error:', error);
+            } finally {
+                sendMessageBtn.disabled = false;
+            }
+        });
+
+        // Initialize the correct view on load
+        initializeView();
+
+    </script>
+
+</body>
+</html>
